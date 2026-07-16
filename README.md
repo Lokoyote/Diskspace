@@ -26,7 +26,7 @@ volume (internal and external) from a single dropdown menu.
 
 ## Screenshots
 
-
+![Diskspace screenshot](https://github.com/Lokoyote/Diskspace/blob/main/Diskspace%20screenshot.png?raw=true)
 
 ## Installation
 
