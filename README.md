@@ -1,97 +1,86 @@
-# Disk Space — GNOME Shell panel indicator
+# Disk Space (panel indicator)
 
-A lightweight GNOME Shell extension that shows the occupancy of a disk
-volume directly in the top panel, and lets you inspect every mounted
-volume (internal and external) from a single dropdown menu.
+GNOME Shell extension: a permanent icon in the top panel showing the
+occupancy percentage of a volume (chosen in the preferences). Clicking
+it opens the detail of every mounted volume (internal and external),
+with their name as displayed in Nautilus.
 
-![shell-version](https://img.shields.io/badge/GNOME%20Shell-45%20%7C%2046-blue)
-![license](https://img.shields.io/badge/license-GPL--3.0-green)
+## Files
 
-## Features
-
-- 📊 **Permanent panel indicator** — always-on percentage of the volume
-  of your choice, right in the top bar. Turns red past 90% usage so
-  you notice before it's too late.
-- 📂 **One menu, every volume** — click the indicator to see all
-  mounted internal and external drives, each with a usage bar, exact
-  size, and the same name Nautilus gives it.
-- ⚙️ **Simple preferences** — pick which volume feeds the panel
-  percentage from a dropdown; falls back automatically to the system
-  disk if that volume gets unplugged.
-- 🔄 **Always fresh** — refreshes instantly when a drive is
-  plugged/unplugged or a preference changes, when the menu opens, and
-  every 30 seconds in the background.
-- 🪶 **Lightweight** — no polling loops over heavy filesystem scans;
-  relies on the standard `Gio` filesystem-info API.
-
-## Screenshots
-
-![Diskspace screenshot](https://github.com/Lokoyote/Diskspace/blob/main/Diskspace%20screenshot.png?raw=true)
+```
+diskspace@lokoyote.eu/
+├── metadata.json
+├── extension.js        (panel indicator)
+├── prefs.js             (preferences window)
+├── mounts.js            (logic shared between the two above)
+└── schemas/
+    └── org.gnome.shell.extensions.diskspace.gschema.xml
+```
 
 ## Installation
 
-### From extensions.gnome.org
-
-*(link to the extension page once published)*
-
-### Manual installation
-
 ```bash
-git clone https://github.com/<your-username>/diskspace-gnome-extension.git
-cd diskspace-gnome-extension
-
 mkdir -p ~/.local/share/gnome-shell/extensions/diskspace@lokoyote.eu
 cp -r metadata.json extension.js prefs.js mounts.js schemas \
     ~/.local/share/gnome-shell/extensions/diskspace@lokoyote.eu/
 
+# Required: compile the GSettings schema (otherwise the extension
+# crashes on startup with a "Schema ... is not installed" error).
 glib-compile-schemas ~/.local/share/gnome-shell/extensions/diskspace@lokoyote.eu/schemas/
 
 gnome-extensions enable diskspace@lokoyote.eu
 ```
 
-Then log out and back in (Wayland) or press `Alt+F2` → `r` → `Enter`
-(X11) to load the extension.
-
-## Configuration
-
-Open the preferences from the "Extensions" / "Extension Manager" app,
-or run:
+## Choosing the displayed volume
 
 ```bash
 gnome-extensions prefs diskspace@lokoyote.eu
 ```
+(or via the "Extensions" / "Extension Manager" app → ⚙️ icon next to
+the extension). A dropdown lists every currently mounted volume;
+"Automatic" falls back to the system disk (/). The change takes
+effect immediately, with no need to reload the extension.
 
-Choose which mounted volume drives the panel percentage. "Automatic"
-always tracks the system disk (`/`).
+## Reloading after a code change (extension.js / mounts.js)
+
+- **On X11**: `Alt+F2`, type `r`, then Enter.
+- **On Wayland** (default on recent GNOME): this shortcut no longer
+  works, you need to log out/log back in.
+- The preferences window (`prefs.js`) runs in a separate process:
+  there's no need to reload the Shell to test changes made there,
+  just close/reopen the preferences window.
+- If you modify the `.gschema.xml` file, the schema needs to be
+  recompiled (`glib-compile-schemas schemas/`) before the change
+  takes effect.
+
+Possible errors:
+```bash
+journalctl --user -f | grep -i diskspace
+```
 
 ## How it works
 
-`mounts.js` reads `/proc/mounts` to build the list of real, physically
-mounted volumes (internal and external), filtering out virtual and
-technical filesystems (tmpfs, proc, overlay, snap, containers...). For
-display names, it reuses `Gio.Mount.get_name()` — the exact same name
-Nautilus shows in its sidebar and "Other Locations" view. Filesystem
-usage is queried asynchronously per volume via
-`Gio.File.query_filesystem_info_async`, so the Shell never blocks
-while stats are fetched.
+- `mounts.js` reads `/proc/mounts` to list the filesystems that are
+  actually mounted (internal and external), filtering out technical
+  mounts (tmpfs, proc, overlay, snap, containers...).
+- For each volume's name, it uses `Gio.Mount.get_name()` — exactly
+  what Nautilus displays in its sidebar / "Other Locations".
+- The percentage permanently shown in the panel corresponds to the
+  volume chosen in the preferences (`selected-mountpoint`, an empty
+  string meaning "automatic" = system disk). If the chosen volume is
+  no longer mounted (USB drive unplugged), the indicator automatically
+  falls back to the system disk without altering the saved preference.
+- It turns red past 90% occupancy.
+- Refreshes: immediately on volume plug/unplug or preference change,
+  when the menu is opened, and continuously every 30 seconds.
 
 ## Known limitations
 
-- Volumes mounted via MTP/gvfs (phones, cameras) aren't listed — this
-  API doesn't reliably report their total capacity.
-- An unreachable network mount (classic NFS/CIFS via `/proc/mounts`)
-  shows "information unavailable" instead of blocking the UI.
-- Network volumes mounted through Nautilus/GVfs (FTP, SFTP, SMB,
-  WebDAV) are out of scope for this extension.
-
-## Contributing
-
-Issues and pull requests are welcome. The codebase is small and split
-into three files: `extension.js` (the panel indicator, running in the
-Shell process), `prefs.js` (the preferences window, running in a
-separate process), and `mounts.js` (logic shared by both).
-
-## License
-
-*(add your license here, e.g. GPL-3.0-or-later — the convention for
-GNOME Shell extensions)*
+- Volumes mounted via MTP/gvfs (phones, cameras) are not listed: they
+  generally don't report reliable total-space information through
+  this API.
+- An unreachable network mountpoint (classic NFS/CIFS, via
+  /proc/mounts) will show "Information indisponible" rather than
+  blocking the interface.
+- Network volumes (FTP, SFTP, SMB, WebDAV mounted via Nautilus/GVfs)
+  are not supported by this extension.
