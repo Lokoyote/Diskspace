@@ -1,12 +1,10 @@
-// Functions shared between extension.js (Shell process) and prefs.js
-// (preferences window process) — two separate processes that can both
-// import this local module.
+// shared by extension.js and prefs.js
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
-// "Pseudo" filesystems to ignore (no real volume behind them).
-export const EXCLUDED_FS_TYPES = new Set([
+// fake filesystems, no real volume behind them
+export const IGNORED_FS_TYPES = new Set([
     'proc', 'sysfs', 'tmpfs', 'devtmpfs', 'devpts', 'cgroup', 'cgroup2',
     'pstore', 'bpf', 'tracefs', 'debugfs', 'mqueue', 'hugetlbfs', 'autofs',
     'binfmt_misc', 'configfs', 'securityfs', 'fusectl', 'overlay',
@@ -14,16 +12,14 @@ export const EXCLUDED_FS_TYPES = new Set([
     'fuse.gvfsd-fuse', 'fuse.portal', 'fuse.gvfs-fuse-daemon',
 ]);
 
-// Mountpoint prefixes to ignore (system/container noise).
-// Note: /run/media/ and /media/ are intentionally kept, since that's
-// often where USB drives / external disks get mounted.
-export const EXCLUDED_PATH_PREFIXES = [
+// system/container noise, skip these mountpoints (keep /media and /run/media though, that's usually where USB drives land)
+export const IGNORED_PREFIXES = [
     '/snap/', '/var/lib/docker/', '/var/lib/containers/',
     '/run/user/', '/run/lock', '/run/snapd/', '/run/credentials/',
     '/sys/', '/proc/', '/dev/',
 ];
 
-export function unescapeMountPath(str) {
+export function unescapePath(str) {
     return str
         .replace(/\\040/g, ' ')
         .replace(/\\011/g, '\t')
@@ -33,23 +29,22 @@ export function unescapeMountPath(str) {
 
 export function formatSize(bytes) {
     let n = bytes;
-    const units = ['o', 'Ko', 'Mo', 'Go'];
+    const units = ['B', 'KB', 'MB', 'GB'];
     for (const unit of units) {
         if (n < 1024)
-            return unit === 'o' ? `${Math.round(n)} ${unit}` : `${n.toFixed(1)} ${unit}`;
+            return unit === 'B' ? `${Math.round(n)} ${unit}` : `${n.toFixed(1)} ${unit}`;
         n /= 1024;
     }
-    return `${n.toFixed(1)} To`;
+    return `${n.toFixed(1)} TB`;
 }
 
-export function makeBar(fraction, width = 12) {
-    const clamped = Math.max(0, Math.min(1, fraction));
+export function makeBar(ratio, width = 12) {
+    const clamped = Math.max(0, Math.min(1, ratio));
     const filled = Math.round(clamped * width);
     return '█'.repeat(filled) + '░'.repeat(width - filled);
 }
 
-// Reads /proc/mounts and returns the list of "real" volumes (internal
-// and external), excluding virtual/technical filesystems.
+// Reads /proc/mounts, returns real volumes (internal + external), skipping virtual/technical filesystems.
 export function getRealMounts() {
     let contents;
     try {
@@ -70,20 +65,19 @@ export function getRealMounts() {
             continue;
 
         const device = parts[0];
-        const mountpoint = unescapeMountPath(parts[1]);
+        const mountpoint = unescapePath(parts[1]);
         const fstype = parts[2];
 
-        if (EXCLUDED_FS_TYPES.has(fstype))
+        if (IGNORED_FS_TYPES.has(fstype))
             continue;
-        if (EXCLUDED_PATH_PREFIXES.some(p => mountpoint.startsWith(p)))
-            continue;
-
-        const isNetworkFs = ['nfs', 'nfs4', 'cifs', 'smb3', 'smbfs'].includes(fstype);
-        if (!device.startsWith('/dev/') && !isNetworkFs && !fstype.startsWith('fuse'))
+        if (IGNORED_PREFIXES.some(p => mountpoint.startsWith(p)))
             continue;
 
-        // In case of stacked mounts at the same location, keep the last
-        // one (same behaviour as the `df` command).
+        const isNetwork = ['nfs', 'nfs4', 'cifs', 'smb3', 'smbfs'].includes(fstype);
+        if (!device.startsWith('/dev/') && !isNetwork && !fstype.startsWith('fuse'))
+            continue;
+
+        // Stacked mounts at the same spot: keep the last one, same as df.
         mounts.set(mountpoint, {device, fstype});
     }
 
@@ -92,10 +86,8 @@ export function getRealMounts() {
         .map(mountpoint => ({mountpoint, ...mounts.get(mountpoint)}));
 }
 
-// Maps each mountpoint to the name Nautilus displays for that volume
-// (mount.get_name() — this is exactly what Nautilus uses in its
-// sidebar and "Other Locations").
-export function getNautilusNamesByPath() {
+// mountpoint -> name Nautilus shows for that volume
+export function getMountNames() {
     const map = new Map();
     for (const mount of Gio.VolumeMonitor.get().get_mounts()) {
         const root = mount.get_root();
@@ -106,9 +98,8 @@ export function getNautilusNamesByPath() {
     return map;
 }
 
-// "Nautilus-style" name for a given mountpoint, falling back to the
-// folder name if no Gio.Mount matches.
-export function displayNameFor(mountpoint, namesByPath) {
-    return namesByPath.get(mountpoint)
-        || (mountpoint === '/' ? 'Système de fichiers racine' : GLib.path_get_basename(mountpoint));
+// Falls back to the folder name if Nautilus doesn't know this mount.
+export function displayNameFor(mountpoint, names) {
+    return names.get(mountpoint)
+        || (mountpoint === '/' ? 'Root filesystem' : GLib.path_get_basename(mountpoint));
 }
