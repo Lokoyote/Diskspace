@@ -10,16 +10,14 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {
-    getRealMounts, getNautilusNamesByPath, displayNameFor, formatSize, makeBar,
+    getRealMounts, getMountNames, displayNameFor, formatSize, makeBar,
 } from './mounts.js';
 
-// Continuous automatic refresh (the indicator is always visible, not
-// just while the menu is open).
-const REFRESH_INTERVAL_SECONDS = 30;
+const REFRESH_SECONDS = 30;
 
-// One menu row: volume name + bar/values on a second line.
-const DiskSpaceRow = GObject.registerClass(
-class DiskSpaceRow extends PopupMenu.PopupBaseMenuItem {
+// One row in the popup menu: volume name, usage info below it.
+const VolumeRow = GObject.registerClass(
+class VolumeRow extends PopupMenu.PopupBaseMenuItem {
     constructor(name) {
         super({
             reactive: false,
@@ -28,10 +26,12 @@ class DiskSpaceRow extends PopupMenu.PopupBaseMenuItem {
 
         this._box = new St.BoxLayout({vertical: true, x_expand: true});
 
-        this._nameLabel = new St.Label({text: name});
+        this._nameLabel = new St.Label({text: name,
+            style: 'color: #202020; font-weight: bold;',
+        });
         this._infoLabel = new St.Label({
-            text: 'Calcul en cours…',
-            style: 'font-family: monospace; font-size: 90%; opacity: 0.75;',
+            text: 'Calculating…',
+            style: 'font-family: monospace; font-size: 90%; opacity: 1;',
         });
 
         this._box.add_child(this._nameLabel);
@@ -47,7 +47,7 @@ class DiskSpaceRow extends PopupMenu.PopupBaseMenuItem {
 const DiskSpaceIndicator = GObject.registerClass(
 class DiskSpaceIndicator extends PanelMenu.Button {
     constructor(settings) {
-        super(0.0, 'Espace disque', false);
+        super(0.0, 'Disk space', false);
 
         this._settings = settings;
 
@@ -67,18 +67,18 @@ class DiskSpaceIndicator extends PanelMenu.Button {
         this.add_child(this._box);
 
         this._rows = new Map();
-        this._targetMountpoint = '/';
-        this._refreshTimeoutId = null;
+        this._panelMountpoint = '/';
+        this._timeoutId = null;
         this._cancellable = new Gio.Cancellable();
 
         this._volumeMonitor = Gio.VolumeMonitor.get();
-        this._monitorSignalIds = [
+        this._monitorIds = [
             this._volumeMonitor.connect('mount-added', () => this._rebuild()),
             this._volumeMonitor.connect('mount-removed', () => this._rebuild()),
             this._volumeMonitor.connect('mount-changed', () => this._rebuild()),
         ];
 
-        this._settingsSignalIds = [
+        this._settingsIds = [
             this._settings.connect('changed::selected-mountpoint', () => this._rebuild()),
         ];
 
@@ -93,24 +93,22 @@ class DiskSpaceIndicator extends PanelMenu.Button {
 
     _startTimer() {
         this._stopTimer();
-        this._refreshTimeoutId = GLib.timeout_add_seconds(
-            GLib.PRIORITY_DEFAULT, REFRESH_INTERVAL_SECONDS, () => {
+        this._timeoutId = GLib.timeout_add_seconds(
+            GLib.PRIORITY_DEFAULT, REFRESH_SECONDS, () => {
                 this._rebuild();
                 return GLib.SOURCE_CONTINUE;
             });
     }
 
     _stopTimer() {
-        if (this._refreshTimeoutId) {
-            GLib.source_remove(this._refreshTimeoutId);
-            this._refreshTimeoutId = null;
+        if (this._timeoutId) {
+            GLib.source_remove(this._timeoutId);
+            this._timeoutId = null;
         }
     }
 
-    // Determines which mountpoint feeds the permanent panel percentage:
-    // the one chosen in the preferences if still mounted, otherwise
-    // automatic fallback to the system disk (/).
-    _resolveTarget(mounts) {
+    // Which mountpoint to show in the panel: the one picked in the preferences, or / if it's not mounted anymore.
+    _pickPanelMountpoint(mounts) {
         const selected = this._settings.get_string('selected-mountpoint');
         if (selected && mounts.some(m => m.mountpoint === selected))
             return selected;
@@ -119,23 +117,23 @@ class DiskSpaceIndicator extends PanelMenu.Button {
 
     _rebuild() {
         const mounts = getRealMounts();
-        const namesByPath = getNautilusNamesByPath();
+        const names = getMountNames();
 
-        this._targetMountpoint = this._resolveTarget(mounts);
+        this._panelMountpoint = this._pickPanelMountpoint(mounts);
 
         this.menu.removeAll();
         this._rows.clear();
 
         if (mounts.length === 0) {
             this.menu.addMenuItem(
-                new PopupMenu.PopupMenuItem('Aucun volume détecté', {reactive: false}));
+                new PopupMenu.PopupMenuItem('No volume detected', {reactive: false}));
             this._label.text = '…';
             return;
         }
 
         for (const {mountpoint} of mounts) {
-            const name = displayNameFor(mountpoint, namesByPath);
-            const row = new DiskSpaceRow(name);
+            const name = displayNameFor(mountpoint, names);
+            const row = new VolumeRow(name);
             this.menu.addMenuItem(row);
             this._rows.set(mountpoint, row);
             this._queryMount(mountpoint, row);
@@ -154,26 +152,26 @@ class DiskSpaceIndicator extends PanelMenu.Button {
                     const free = info.get_attribute_uint64('filesystem::free');
                     if (total > 0) {
                         const used = total - free;
-                        const fraction = used / total;
-                        text = `${makeBar(fraction)}  ${formatSize(used)} / ${formatSize(total)} (${Math.round(fraction * 100)} %)`;
+                        const ratio = used / total;
+                        text = `${makeBar(ratio)}  ${formatSize(used)} / ${formatSize(total)} (${Math.round(ratio * 100)} %)`;
 
-                        if (mountpoint === this._targetMountpoint)
-                            this._updatePanelLabel(fraction);
+                        if (mountpoint === this._panelMountpoint)
+                            this._updatePanelLabel(ratio);
                     } else {
-                        text = 'Information indisponible';
+                        text = 'Info unavailable';
                     }
                 } catch (e) {
-                    text = 'Information indisponible';
+                    text = 'Info unavailable';
                 }
 
-                // The row may have been replaced by a _rebuild() in the meantime.
+                // Row might be gone already if a rebuild happened meanwhile.
                 if (this._rows.get(mountpoint) === row)
                     row.setInfo(text);
             });
     }
 
-    _updatePanelLabel(fraction) {
-        const pct = Math.round(fraction * 100);
+    _updatePanelLabel(ratio) {
+        const pct = Math.round(ratio * 100);
         this._label.text = `${pct} %`;
         this._label.style = pct >= 90
             ? 'padding-left: 4px; color: #e01b24; font-weight: bold;'
@@ -189,11 +187,11 @@ class DiskSpaceIndicator extends PanelMenu.Button {
             this._openStateId = null;
         }
 
-        this._settingsSignalIds.forEach(id => this._settings.disconnect(id));
-        this._settingsSignalIds = [];
+        this._settingsIds.forEach(id => this._settings.disconnect(id));
+        this._settingsIds = [];
 
-        this._monitorSignalIds.forEach(id => this._volumeMonitor.disconnect(id));
-        this._monitorSignalIds = [];
+        this._monitorIds.forEach(id => this._volumeMonitor.disconnect(id));
+        this._monitorIds = [];
 
         super.destroy();
     }
