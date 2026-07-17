@@ -3,11 +3,10 @@
   <schema id="org.gnome.shell.extensions.diskspace" path="/org/gnome/shell/extensions/diskspace/">
     <key name="selected-mountpoint" type="s">
       <default>''</default>
-      <summary>Point de montage affiché par défaut</summary>
+      <summary>Default displayed mountpoint</summary>
       <description>
-        Chemin du point de montage dont le pourcentage d'occupation est
-        affiché en permanence dans l'indicateur du panel. Une chaîne vide
-        signifie "automatique" (disque système, /).
+        Path of the mountpoint whose usage percentage stays shown in the
+        panel indicator. An empty string means "automatic" (system disk, /).
       </description>
     </key>
   </schema>
