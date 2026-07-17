@@ -1,8 +1,8 @@
 {
     "uuid": "diskspace@lokoyote.eu",
-    "name": "Espace disque (indicateur panel)",
-    "description": "Icône permanente dans le panel affichant l'occupation d'un volume choisi ; un clic liste tous les volumes montés (internes et externes) avec leur nom Nautilus.",
+    "name": "Disk Space (panel indicator)",
+    "description": "Permanent panel icon showing the usage of a chosen volume; click it to list every mounted volume (internal and external) with its Nautilus name.",
     "shell-version": ["45", "46"],
     "settings-schema": "org.gnome.shell.extensions.diskspace",
-    "url": ""
+    "url": "https://github.com/Lokoyote/Diskspace"
 }
