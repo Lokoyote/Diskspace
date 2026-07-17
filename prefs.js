@@ -4,56 +4,53 @@ import GLib from 'gi://GLib';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
-import {getRealMounts, getNautilusNamesByPath, displayNameFor} from './mounts.js';
+import {getRealMounts, getMountNames, displayNameFor} from './mounts.js';
 
 export default class DiskSpacePreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
 
         const page = new Adw.PreferencesPage({
-            title: 'Général',
+            title: 'General',
             icon_name: 'drive-harddisk-symbolic',
         });
         window.add(page);
 
-        this._buildPanelVolumeGroup(page, settings);
+        this._buildVolumeGroup(page, settings);
     }
 
-    _buildPanelVolumeGroup(page, settings) {
+    _buildVolumeGroup(page, settings) {
         const group = new Adw.PreferencesGroup({
-            title: 'Indicateur du panel',
-            description: 'Choisir le volume dont le pourcentage d\u2019occupation '
-                + 'est affiché en permanence dans le panel.',
+            title: 'Panel indicator',
+            description: 'Choose which volume\u2019s usage percentage stays shown in the panel.',
         });
         page.add(group);
 
-        // "Automatique" corresponds to an empty value in the settings:
-        // the extension then falls back to the system disk (/).
+        // Empty value = automatic, falls back to the system disk (/).
         const mountpoints = [''];
         const stringList = new Gtk.StringList();
-        stringList.append('Automatique (disque système)');
+        stringList.append('Automatic (system disk)');
 
         const mounts = getRealMounts();
-        const namesByPath = getNautilusNamesByPath();
+        const names = getMountNames();
 
         for (const {mountpoint} of mounts) {
-            const name = displayNameFor(mountpoint, namesByPath);
-            stringList.append(`${name}  —  ${mountpoint}`);
+            const name = displayNameFor(mountpoint, names);
+            stringList.append(`${name} (${mountpoint})`);
             mountpoints.push(mountpoint);
         }
 
-        // If the currently saved volume is no longer mounted (e.g. a USB
-        // drive that got unplugged), add it to the list anyway so we
-        // don't silently overwrite the user's preference.
+        // Keep the saved volume in the list even if it got unplugged
+        // (e.g. a USB drive), so we don't silently overwrite the setting.
         const current = settings.get_string('selected-mountpoint');
         if (current && !mountpoints.includes(current)) {
-            stringList.append(`${GLib.path_get_basename(current)}  —  ${current}  (non connecté)`);
+            stringList.append(`${GLib.path_get_basename(current)} (${current}, not connected)`);
             mountpoints.push(current);
         }
 
         const row = new Adw.ComboRow({
-            title: 'Volume affiché',
-            subtitle: 'Le pourcentage de ce volume s\u2019affiche en permanence dans le panel',
+            title: 'Displayed volume',
+            subtitle: 'This volume\u2019s usage percentage stays shown in the panel',
             model: stringList,
             expression: new Gtk.PropertyExpression(Gtk.StringObject, null, 'string'),
         });
