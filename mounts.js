@@ -46,13 +46,22 @@ export function makeBar(ratio, width = 12) {
 
 // Reads /proc/mounts, returns real volumes (internal + external), skipping virtual/technical filesystems.
 export function getRealMounts() {
-    let contents;
-    try {
-        [, contents] = GLib.file_get_contents('/proc/mounts');
-    } catch (e) {
-        return [];
-    }
+    return new Promise(resolve => {
+        const file = Gio.File.new_for_path('/proc/mounts');
+        file.load_contents_async(null, (source, result) => {
+            let contents;
+            try {
+                [, contents] = source.load_contents_finish(result);
+            } catch (e) {
+                resolve([]);
+                return;
+            }
+            resolve(parseMounts(contents));
+        });
+    });
+}
 
+function parseMounts(contents) {
     const text = new TextDecoder('utf-8').decode(contents);
     const mounts = new Map();
 
