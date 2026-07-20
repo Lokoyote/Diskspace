@@ -40,7 +40,7 @@ class VolumeRow extends PopupMenu.PopupBaseMenuItem {
     }
 
     setInfo(text) {
-        this._infoLabel.text = text;
+        this._infoLabel.clutter_text.set_markup(text);
     }
 });
 
@@ -72,20 +72,19 @@ class DiskSpaceIndicator extends PanelMenu.Button {
         this._cancellable = new Gio.Cancellable();
 
         this._volumeMonitor = Gio.VolumeMonitor.get();
-        this._monitorIds = [
-            this._volumeMonitor.connect('mount-added', () => this._rebuild()),
-            this._volumeMonitor.connect('mount-removed', () => this._rebuild()),
-            this._volumeMonitor.connect('mount-changed', () => this._rebuild()),
-        ];
+        this._volumeMonitor.connectObject(
+            'mount-added', () => this._rebuild(),
+            'mount-removed', () => this._rebuild(),
+            'mount-changed', () => this._rebuild(),
+            this);
 
-        this._settingsIds = [
-            this._settings.connect('changed::selected-mountpoint', () => this._rebuild()),
-        ];
+        this._settings.connectObject(
+            'changed::selected-mountpoint', () => this._rebuild(), this);
 
-        this._openStateId = this.menu.connect('open-state-changed', (menu, open) => {
+        this.menu.connectObject('open-state-changed', (menu, open) => {
             if (open)
                 this._rebuild();
-        });
+        }, this);
 
         this._rebuild();
         this._startTimer();
@@ -115,8 +114,8 @@ class DiskSpaceIndicator extends PanelMenu.Button {
         return '/';
     }
 
-    _rebuild() {
-        const mounts = getRealMounts();
+    async _rebuild() {
+        const mounts = await getRealMounts();
         const names = getMountNames();
 
         this._panelMountpoint = this._pickPanelMountpoint(mounts);
@@ -153,7 +152,11 @@ class DiskSpaceIndicator extends PanelMenu.Button {
                     if (total > 0) {
                         const used = total - free;
                         const ratio = used / total;
-                        text = `${makeBar(ratio)}  ${formatSize(used)} / ${formatSize(total)} (${Math.round(ratio * 100)} %)`;
+                        const pct = Math.round(ratio * 100);
+                        const pctMarkup = pct >= 90
+                            ? `<span foreground="#e01b24"><b>${pct} %</b></span>`
+                            : `<b>${pct} %</b>`;
+                        text = `${makeBar(ratio)}  ${formatSize(used)} / ${formatSize(total)} (${pctMarkup})`;
 
                         if (mountpoint === this._panelMountpoint)
                             this._updatePanelLabel(ratio);
@@ -182,16 +185,9 @@ class DiskSpaceIndicator extends PanelMenu.Button {
         this._stopTimer();
         this._cancellable.cancel();
 
-        if (this._openStateId) {
-            this.menu.disconnect(this._openStateId);
-            this._openStateId = null;
-        }
-
-        this._settingsIds.forEach(id => this._settings.disconnect(id));
-        this._settingsIds = [];
-
-        this._monitorIds.forEach(id => this._volumeMonitor.disconnect(id));
-        this._monitorIds = [];
+        this._volumeMonitor?.disconnectObject(this);
+        this.menu?.disconnectObject(this);
+        this._settings?.disconnectObject(this);
 
         super.destroy();
     }
