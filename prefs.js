@@ -7,7 +7,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 import {getRealMounts, getMountNames, displayNameFor} from './mounts.js';
 
 export default class DiskSpacePreferences extends ExtensionPreferences {
-    fillPreferencesWindow(window) {
+    async fillPreferencesWindow(window) {
         const settings = this.getSettings();
 
         const page = new Adw.PreferencesPage({
@@ -19,7 +19,7 @@ export default class DiskSpacePreferences extends ExtensionPreferences {
         this._buildVolumeGroup(page, settings);
     }
 
-    _buildVolumeGroup(page, settings) {
+    async _buildVolumeGroup(page, settings) {
         const group = new Adw.PreferencesGroup({
             title: 'Panel indicator',
             description: 'Choose which volume\u2019s usage percentage stays shown in the panel.',
@@ -31,7 +31,7 @@ export default class DiskSpacePreferences extends ExtensionPreferences {
         const stringList = new Gtk.StringList();
         stringList.append('Automatic (system disk)');
 
-        const mounts = getRealMounts();
+        const mounts = await getRealMounts();
         const names = getMountNames();
 
         for (const {mountpoint} of mounts) {
