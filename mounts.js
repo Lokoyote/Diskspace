@@ -19,6 +19,16 @@ export const IGNORED_PREFIXES = [
     '/sys/', '/proc/', '/dev/',
 ];
 
+// Custom bar/text color as #rrggbb, or null to follow the theme.
+// Tolerates a stale compiled schema without the key (reading a missing key
+// is fatal in GSettings), and validates the value since it ends up in markup/CSS.
+export function readBarColor(settings) {
+    if (!settings.settings_schema.has_key('bar-color'))
+        return null;
+    const color = settings.get_string('bar-color');
+    return /^#[0-9a-fA-F]{6}$/.test(color) ? color : null;
+}
+
 export function unescapePath(str) {
     return str
         .replace(/\\040/g, ' ')
