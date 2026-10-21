@@ -1,4 +1,5 @@
 # Disk Space
+!(https://github.com/Lokoyote/Diskspace/blob/main/Diskspace%20screenshot.png)
 
 GNOME Shell extension displaying the usage percentage of a selected filesystem in the top panel.
 
